@@ -47,8 +47,17 @@ def remove_accents(s):
     s2   = "".join(c for c in nfkd if not unicodedata.combining(c))
     return re.sub(r'[^a-zA-Z0-9_]+', '', s2.replace(' ', '_')).lower()
 
+
+
+# Thêm danh sách email được phép thêm
+ALLOWED_EXTRA_EMAILS = {
+    "duylinh93@gmail.com",
+    "linhvd.neu@yahoo.com",
+}
 def is_valid_vcb_email(email: str) -> bool:
     email = email.strip().lower()
+    if email in ALLOWED_EXTRA_EMAILS:
+        return True
     return bool(re.match(r'^[\w.\-]+@vietcombank\.com\.vn$', email))
 
 # ====== XỬ LÝ DỮ LIỆU ======
