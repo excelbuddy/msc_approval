@@ -14,6 +14,9 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from requests.adapters import HTTPAdapter
+import base64
+import json
+import uuid
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -338,6 +341,38 @@ if st.button("🚀 LẤY DỮ LIỆU", type="primary", use_container_width=True)
     fname  = f"mscdata_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     buffer = build_excel_buffer(save_mode_val, all_kw_data)
 
+    request_id = f"MSC-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
+
+    payload = {
+        "action": "create_request",
+        "shared_secret": APPROVAL_SHARED_SECRET,
+        "request_id": request_id,
+        "requester_email": requester_email,
+        "keywords": keywords,
+        "total_pages": int(total_pages),
+        "save_mode": save_mode_val,
+        "results_summary": results_summary,
+        "file_name": fname,
+        "file_mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "file_base64": base64.b64encode(buffer.getvalue()).decode("ascii"),
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+    
+    try:
+        approval_response = submit_approval_request(payload)
+        st.success(
+            "✅ Đã gửi yêu cầu phê duyệt. Nếu được duyệt, file Excel sẽ được gửi "
+            f"tới {requester_email}."
+        )
+        st.info(f"Mã yêu cầu: {request_id}")
+    except Exception as e:
+        st.error(f"Không gửi được yêu cầu phê duyệt: {e}")
+
+
+
+    
+
     if buffer:
         st.success("✅ Hoàn thành! Nhấn nút bên dưới để tải file.")
         st.download_button(
@@ -367,3 +402,25 @@ if st.button("🚀 LẤY DỮ LIỆU", type="primary", use_container_width=True)
     if not is_vcb_email(requester_email):
         st.error("Vui lòng nhập email hợp lệ dạng @vietcombank.com.vn để nhận kết quả.")
         st.stop()
+
+
+
+def submit_approval_request(payload):
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(
+        APPROVAL_WEBHOOK_URL,
+        headers=headers,
+        data=json.dumps(payload),
+        timeout=60,
+    )
+    response.raise_for_status()
+
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise RuntimeError("Apps Script không trả về JSON hợp lệ") from exc
+
+    if not body.get("ok"):
+        raise RuntimeError(body.get("error", "Apps Script từ chối request"))
+
+    return body
