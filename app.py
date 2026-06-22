@@ -255,7 +255,7 @@ st.info(
 
 # ── Email người dùng ────────────────────────────────────────────────────
 user_email = st.text_input(
-    "📧 Email nhận kết quả (chỉ chấp nhận @vietcombank.com.vn)",
+    "📧 Email nhận kết quả (chỉ chấp nhận VCB)",
     placeholder="yourname@vietcombank.com.vn"
 )
 
@@ -284,7 +284,7 @@ save_mode_val = {
 st.divider()
 
 # ── Nút chạy ───────────────────────────────────────────────────────────
-if st.button("🚀 LẤY DỮ LIỆU VÀ GỬI YÊU CẦU PHÊ DUYỆT", type="primary", use_container_width=True):
+if st.button("🚀 GỬI YÊU CẦU DỮ LIỆU", type="primary", use_container_width=True):
 
     # Validate email
     if not user_email.strip():
@@ -336,24 +336,24 @@ if st.button("🚀 LẤY DỮ LIỆU VÀ GỬI YÊU CẦU PHÊ DUYỆT", type="p
     log(f"✅ File Excel đã tạo: {fname} ({len(buffer.getvalue())//1024} KB)")
 
     # 3. Đăng ký request lên Google Apps Script (lưu tạm file + metadata)
-    log("☁️  Đang gửi dữ liệu lên Google Apps Script...")
+    log("☁️  Đang gửi dữ liệu lên GAS...")
     gas_ok = register_request_to_gas(
         request_id, user_email, keywords,
         results_summary, excel_b64, fname, save_mode_label
     )
     if gas_ok:
-        log("✅ Google Apps Script đã nhận và lưu dữ liệu.")
+        log("✅ GAS đã nhận và lưu dữ liệu.")
     else:
-        log("⚠️  GAS không phản hồi — vẫn tiếp tục gửi Telegram.")
+        log("⚠️  GAS không phản hồi — vẫn tiếp tục gửi Tele tới Admin.")
 
     # 4. Gửi Telegram với nút duyệt
-    log("📨 Đang gửi thông báo Telegram...")
+    log("📨 Đang gửi thông báo tới Admin...")
     tg_ok, tg_resp = send_telegram_approval(
         user_email, keywords, results_summary,
         excel_b64, fname, save_mode_label, request_id
     )
     if tg_ok:
-        log("✅ Đã gửi Telegram thành công!")
+        log("✅ Đã gửi yêu cầu tới admin thành công!")
     else:
         log(f"❌ Telegram lỗi: {tg_resp}")
 
