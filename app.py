@@ -53,6 +53,8 @@ def remove_accents(s):
 ALLOWED_EXTRA_EMAILS = {
     "duylinh93@gmail.com",
     "linhvd.neu@yahoo.com",
+    "duylinhvinhphuc@gmail.com",
+    "linhtcdn.neu@gmail.com",
 }
 def is_valid_vcb_email(email: str) -> bool:
     email = email.strip().lower()
