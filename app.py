@@ -291,7 +291,7 @@ if st.button("🚀 GỬI YÊU CẦU DỮ LIỆU", type="primary", use_container_
         st.error("Vui lòng nhập email nhận kết quả!")
         st.stop()
     if not is_valid_vcb_email(user_email):
-        st.error("❌ Chỉ chấp nhận email @vietcombank.com.vn!")
+        st.error("❌ Địa chỉ Email không hợp lệ!")
         st.stop()
 
     keywords = [k.strip() for k in keyword_input.split(';') if k.strip()]
