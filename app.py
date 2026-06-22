@@ -247,11 +247,11 @@ def register_request_to_gas(
 st.set_page_config(page_title="Dữ liệu muasamcong", page_icon="🔍", layout="centered")
 st.title("🔍 Tra cứu dữ liệu Mua Sắm Công")
 
-st.info(
-    "📌 **Hướng dẫn:** Nhập thông tin, nhấn *Lấy dữ liệu*. "
-    "Kết quả sẽ được gửi tới email của bạn sau khi được phê duyệt.",
-    icon="ℹ️"
-)
+# st.info(
+#     "📌 **Hướng dẫn:** Nhập thông tin, nhấn *Lấy dữ liệu*. "
+#     "Kết quả sẽ được gửi tới email của bạn sau khi được phê duyệt.",
+#     icon="ℹ️"
+# )
 
 # ── Email người dùng ────────────────────────────────────────────────────
 user_email = st.text_input(
