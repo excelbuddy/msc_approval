@@ -362,3 +362,8 @@ if st.button("🚀 LẤY DỮ LIỆU", type="primary", use_container_width=True)
             log("\nℹ️  Không có người nhận → bỏ qua gửi email.")
     else:
         st.error("Không thể tạo file Excel.")
+
+
+    if not is_vcb_email(requester_email):
+        st.error("Vui lòng nhập email hợp lệ dạng @vietcombank.com.vn để nhận kết quả.")
+        st.stop()
