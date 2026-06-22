@@ -255,8 +255,8 @@ st.info(
 
 # ── Email người dùng ────────────────────────────────────────────────────
 user_email = st.text_input(
-    "📧 Email nhận kết quả (chỉ chấp nhận VCB)",
-    placeholder="yourname@vietcombank.com.vn"
+    "📧 Email nhận kết quả (chỉ chấp nhận email VCB)",
+    placeholder="điền email hợp lệ"
 )
 
 # ── Từ khóa ────────────────────────────────────────────────────────────
