@@ -2,27 +2,19 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
-import os
 import io
+import json
+import base64
 import urllib3
 import unicodedata
 import re
-import smtplib
 import ssl
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
 from requests.adapters import HTTPAdapter
-import base64
-import json
-import uuid
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ====== SSL FIX: bypass DH_KEY_TOO_SMALL cho muasamcong.mpi.gov.vn ======
+# ====== SSL FIX ======
 class LegacySSLAdapter(HTTPAdapter):
-    """Cho phép kết nối tới server dùng DH key yếu (legacy SSL)."""
     def init_poolmanager(self, *args, **kwargs):
         ctx = ssl.create_default_context()
         ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
@@ -36,54 +28,28 @@ def make_session():
     s.mount("https://", LegacySSLAdapter())
     return s
 
-# ====== CẤU HÌNH EMAIL ======
-# ====== CẤU HÌNH PHÊ DUYỆT ======
+# ====== CONFIG ======
 try:
-    APPROVAL_WEBHOOK_URL = st.secrets["APPROVAL_WEBHOOK_URL"]
-    APPROVAL_SHARED_SECRET = st.secrets["APPROVAL_SHARED_SECRET"]
-except KeyError:
-    st.error(
-        "⚠️ Chưa cấu hình Secrets! Vào Settings → Secrets để thêm "
-        "APPROVAL_WEBHOOK_URL và APPROVAL_SHARED_SECRET."
-    )
+    TELEGRAM_BOT_TOKEN  = st.secrets["TELEGRAM_BOT_TOKEN"]
+    TELEGRAM_CHAT_ID    = st.secrets["TELEGRAM_CHAT_ID"]
+    GAS_WEBHOOK_URL     = st.secrets["GAS_WEBHOOK_URL"]
+except KeyError as e:
+    st.error(f"⚠️ Thiếu secret: {e}. Vào Settings → Secrets để bổ sung.")
     st.stop()
 
-VCB_EMAIL_RE = re.compile(
-    r"^[A-Za-z0-9._%+-]+@vietcombank\.com\.vn$",
-    re.IGNORECASE,
-)
-
-# ── Email nhận kết quả ─────────────────────────────────────────────────
-st.markdown("**📧 Email nhận kết quả:**")
-requester_email_input = st.text_input(
-    "Nhập email cơ quan của bạn",
-    placeholder="vd: nguyenvana@vietcombank.com.vn",
-    help="Chỉ chấp nhận địa chỉ email có đuôi @vietcombank.com.vn",
-)
-requester_email = normalize_email(requester_email_input)
-
-if requester_email_input.strip():
-    if is_vcb_email(requester_email):
-        st.caption(f"Kết quả sẽ được gửi tới: {requester_email} sau khi được phê duyệt.")
-    else:
-        st.error("Chỉ chấp nhận email dạng @vietcombank.com.vn.")
-else:
-    st.caption("Nhập email @vietcombank.com.vn để nhận kết quả sau khi được phê duyệt.")
-
+MODE_SEPARATE   = "separate"
+MODE_MULTISHEET = "multisheet"
+MODE_ONESHEET   = "onesheet"
 
 # ====== TIỆN ÍCH ======
-
-def normalize_email(email):
-    return email.strip().lower()
-
-def is_vcb_email(email):
-    return bool(VCB_EMAIL_RE.fullmatch(normalize_email(email)))
-    
-
 def remove_accents(s):
     nfkd = unicodedata.normalize('NFKD', s)
     s2   = "".join(c for c in nfkd if not unicodedata.combining(c))
     return re.sub(r'[^a-zA-Z0-9_]+', '', s2.replace(' ', '_')).lower()
+
+def is_valid_vcb_email(email: str) -> bool:
+    email = email.strip().lower()
+    return bool(re.match(r'^[\w.\-]+@vietcombank\.com\.vn$', email))
 
 # ====== XỬ LÝ DỮ LIỆU ======
 def process_data_for_excel(response_data):
@@ -164,47 +130,7 @@ def fetch_keyword_raw(keyword, total_pages, log_func=None):
             log(f"  ❌ [{keyword}] Lỗi: {e}")
     return all_data
 
-# ====== GỬI EMAIL ======
-def send_email_to(recipient_name, recipient_email, results_summary, excel_files, save_mode):
-    try:
-        msg = MIMEMultipart()
-        msg['From']    = SENDER_EMAIL
-        msg['To']      = recipient_email
-        msg['Subject'] = f"[Email tự động] Kết quả tra cứu dữ liệu hàng hóa muasamcong - {datetime.now().strftime('%d/%m/%Y %H:%M')}"
-
-        lines = [
-            f"Xin chào {recipient_name},",
-            "\n\nLƯU Ý KHI SỬ DỤNG DỮ LIỆU:\n",
-            " - Nên dùng các dòng dữ liệu mà cột bidForm có giá trị [DTRR], [CHCT].",
-            " - Chọn mức giá hợp lý để đảm bảo tính khả thi của gói mua sắm.",
-            " - Dữ liệu chỉ dùng nội bộ trong Ban mua sắm, không gửi ra nơi khác!",
-            "",
-            "Kết quả tìm kiếm hàng hóa trên muasamcong:", "",
-        ]
-        for r in results_summary:
-            lines.append(f"  • \"{r['keyword']}\" → {r['count']} bản ghi")
-        lines += ["", f"File đính kèm: {len(excel_files)} file.", "", "© Developed by Beatme!"]
-
-        msg.attach(MIMEText('\n'.join(lines), 'plain', 'utf-8'))
-
-        for fp in excel_files:
-            if not os.path.exists(fp): continue
-            with open(fp, 'rb') as f:
-                part = MIMEBase('application', 'octet-stream')
-                part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition',
-                            f'attachment; filename="{os.path.basename(fp)}"')
-            msg.attach(part)
-
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as s:
-            s.login(SENDER_EMAIL, SENDER_APP_PASS)
-            s.sendmail(SENDER_EMAIL, recipient_email, msg.as_string())
-        return True
-    except Exception as e:
-        return False
-
-# ====== LƯU EXCEL VÀO BUFFER ======
+# ====== BUILD EXCEL BUFFER ======
 def build_excel_buffer(save_mode_val, all_kw_data):
     buffer = io.BytesIO()
     if save_mode_val == MODE_ONESHEET:
@@ -215,19 +141,7 @@ def build_excel_buffer(save_mode_val, all_kw_data):
             df.to_excel(w, sheet_name='msc_data', index=False)
             _auto_width(w.sheets['msc_data'])
 
-    elif save_mode_val == MODE_MULTISHEET:
-        with pd.ExcelWriter(buffer, engine='openpyxl') as w:
-            for kw, data in all_kw_data:
-                if not data: continue
-                df = _clean_df(data)
-                sn = base = remove_accents(kw)[:28] or "sheet"
-                i = 2
-                while sn in w.sheets: sn = f"{base[:25]}_{i}"; i += 1
-                df.to_excel(w, sheet_name=sn, index=False)
-                _auto_width(w.sheets[sn])
-
-    elif save_mode_val == MODE_SEPARATE:
-        # Với chế độ separate, gộp tất cả vào 1 buffer (mỗi sheet = 1 từ khóa)
+    else:  # MULTISHEET hoặc SEPARATE (đều gộp theo sheet)
         with pd.ExcelWriter(buffer, engine='openpyxl') as w:
             for kw, data in all_kw_data:
                 if not data: continue
@@ -241,11 +155,100 @@ def build_excel_buffer(save_mode_val, all_kw_data):
     buffer.seek(0)
     return buffer
 
+# ====== GỬI TELEGRAM (thông báo + nút duyệt) ======
+def send_telegram_approval(
+    user_email: str,
+    keywords: list[str],
+    results_summary: list[dict],
+    excel_b64: str,
+    fname: str,
+    save_mode_label: str,
+    request_id: str,
+):
+    """
+    Gửi message Telegram với 2 inline button: ✅ Đồng ý / ❌ Từ chối.
+    Callback data chứa toàn bộ thông tin cần thiết để Apps Script xử lý.
+    Vì Telegram giới hạn callback_data 64 bytes, ta lưu payload vào
+    một dict tạm trong session_state (trong thực tế production nên dùng DB/Redis),
+    còn callback_data chỉ chứa request_id.
+    """
+    total_records = sum(r['count'] for r in results_summary)
+    kw_lines = "\n".join(
+        f"  • \"{r['keyword']}\" → {r['count']} bản ghi"
+        for r in results_summary
+    )
+    text = (
+        f"📋 *YÊU CẦU TRA CỨU MSC*\n\n"
+        f"👤 Email: `{user_email}`\n"
+        f"🕐 Thời gian: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
+        f"📊 Chế độ lưu: {save_mode_label}\n"
+        f"📦 Tổng bản ghi: *{total_records}*\n\n"
+        f"Từ khóa:\n{kw_lines}\n\n"
+        f"➡️ Nhấn *✅ Đồng ý* để gửi file kết quả cho user."
+    )
+
+    # Inline keyboard
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ Đồng ý",  "callback_data": f"approve:{request_id}"},
+            {"text": "❌ Từ chối", "callback_data": f"reject:{request_id}"},
+        ]]
+    }
+
+    tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    r = requests.post(tg_url, json={
+        "chat_id":    TELEGRAM_CHAT_ID,
+        "text":       text,
+        "parse_mode": "Markdown",
+        "reply_markup": keyboard,
+    }, timeout=15)
+    return r.ok, r.json()
+
+# ====== GỬI PAYLOAD LÊN GAS WEBHOOK (kèm file base64) ======
+def register_request_to_gas(
+    request_id: str,
+    user_email: str,
+    keywords: list[str],
+    results_summary: list[dict],
+    excel_b64: str,
+    fname: str,
+    save_mode_label: str,
+):
+    """
+    Gửi toàn bộ dữ liệu (kể cả file Excel dạng base64) lên Apps Script
+    để lưu tạm, chờ callback từ Telegram Bot.
+    """
+    payload = {
+        "action":          "register",
+        "request_id":      request_id,
+        "user_email":      user_email,
+        "keywords":        keywords,
+        "results_summary": results_summary,
+        "excel_b64":       excel_b64,
+        "fname":           fname,
+        "save_mode":       save_mode_label,
+        "submitted_at":    datetime.now().isoformat(),
+    }
+    r = requests.post(GAS_WEBHOOK_URL, json=payload, timeout=30)
+    return r.ok
+
 # ======================================================================
 # GIAO DIỆN STREAMLIT
 # ======================================================================
 st.set_page_config(page_title="Dữ liệu muasamcong", page_icon="🔍", layout="centered")
 st.title("🔍 Tra cứu dữ liệu Mua Sắm Công")
+
+st.info(
+    "📌 **Hướng dẫn:** Nhập thông tin, nhấn *Lấy dữ liệu*. "
+    "Kết quả sẽ được gửi tới email của bạn sau khi được phê duyệt.",
+    icon="ℹ️"
+)
+
+# ── Email người dùng ────────────────────────────────────────────────────
+user_email = st.text_input(
+    "📧 Email nhận kết quả (chỉ chấp nhận @vietcombank.com.vn)",
+    placeholder="yourname@vietcombank.com.vn"
+)
 
 # ── Từ khóa ────────────────────────────────────────────────────────────
 keyword_input = st.text_input(
@@ -262,65 +265,40 @@ total_pages = st.number_input(
 # ── Chế độ lưu file ────────────────────────────────────────────────────
 save_mode_label = st.radio("Chế độ lưu file", [
     "Gộp vào 1 file – tất cả vào 1 sheet (có cột 'tu_khoa')",
-    "Mỗi từ khóa → 1 file Excel riêng (tải về từng file)",
     "Gộp vào 1 file – mỗi từ khóa = 1 sheet riêng",
 ])
 save_mode_val = {
     "Gộp vào 1 file – tất cả vào 1 sheet (có cột 'tu_khoa')": MODE_ONESHEET,
-    "Mỗi từ khóa → 1 file Excel riêng (tải về từng file)": MODE_SEPARATE,
-    "Gộp vào 1 file – mỗi từ khóa = 1 sheet riêng": MODE_MULTISHEET,
+    "Gộp vào 1 file – mỗi từ khóa = 1 sheet riêng":          MODE_MULTISHEET,
 }[save_mode_label]
-
-# ── Người nhận email ───────────────────────────────────────────────────
-st.markdown("**📧 Gửi email tới:**")
-
-recip_options = [f"{name.strip()} <{email}>" for name, email in EMAIL_RECIPIENTS]
-selected_recip = st.multiselect(
-    "Chọn từ danh sách:",
-    options=recip_options,
-    placeholder="Tìm tên hoặc email..."
-)
-
-# Nhập email tùy chỉnh
-custom_email_input = st.text_input(
-    "✏️ Hoặc nhập thêm email khác (nhiều email ngăn cách bằng dấu ';'):",
-    placeholder="vd: nguyen@example.com; tran@example.com"
-)
-
-# Tổng hợp danh sách người nhận
-selected_recipients = [
-    EMAIL_RECIPIENTS[recip_options.index(s)] for s in selected_recip
-]
-if custom_email_input.strip():
-    for raw in custom_email_input.split(';'):
-        raw = raw.strip()
-        if raw and '@' in raw:
-            selected_recipients.append(("(Tùy chỉnh)", raw))
-
-if selected_recipients:
-    st.caption(f"Sẽ gửi tới {len(selected_recipients)} địa chỉ: " +
-               ", ".join(e for _, e in selected_recipients))
-else:
-    st.caption("Không chọn ai → chỉ tải file, không gửi email.")
 
 st.divider()
 
 # ── Nút chạy ───────────────────────────────────────────────────────────
-if st.button("🚀 LẤY DỮ LIỆU", type="primary", use_container_width=True):
+if st.button("🚀 LẤY DỮ LIỆU VÀ GỬI YÊU CẦU PHÊ DUYỆT", type="primary", use_container_width=True):
+
+    # Validate email
+    if not user_email.strip():
+        st.error("Vui lòng nhập email nhận kết quả!")
+        st.stop()
+    if not is_valid_vcb_email(user_email):
+        st.error("❌ Chỉ chấp nhận email @vietcombank.com.vn!")
+        st.stop()
+
     keywords = [k.strip() for k in keyword_input.split(';') if k.strip()]
     if not keywords:
         st.error("Vui lòng nhập ít nhất 1 từ khóa!")
         st.stop()
 
-    log_area   = st.empty()
-    log_lines  = []
+    log_area  = st.empty()
+    log_lines = []
 
     def log(msg):
         log_lines.append(msg)
         log_area.code("\n".join(log_lines), language=None)
 
+    # 1. Fetch dữ liệu
     results_summary, all_kw_data = [], []
-
     for kw in keywords:
         log(f"🔍 Tìm kiếm: \"{kw}\"")
         data = fetch_keyword_raw(kw, int(total_pages), log)
@@ -336,91 +314,42 @@ if st.button("🚀 LẤY DỮ LIỆU", type="primary", use_container_width=True)
         st.warning("Không tìm thấy dữ liệu nào.")
         st.stop()
 
-    # Lưu file Excel
+    # 2. Tạo file Excel → base64
     log("💾 Đang tạo file Excel...")
     fname  = f"mscdata_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     buffer = build_excel_buffer(save_mode_val, all_kw_data)
-
-    request_id = f"MSC-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
-
-    payload = {
-        "action": "create_request",
-        "shared_secret": APPROVAL_SHARED_SECRET,
-        "request_id": request_id,
-        "requester_email": requester_email,
-        "keywords": keywords,
-        "total_pages": int(total_pages),
-        "save_mode": save_mode_val,
-        "results_summary": results_summary,
-        "file_name": fname,
-        "file_mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "file_base64": base64.b64encode(buffer.getvalue()).decode("ascii"),
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-    }
-
-    
-    try:
-        approval_response = submit_approval_request(payload)
-        st.success(
-            "✅ Đã gửi yêu cầu phê duyệt. Nếu được duyệt, file Excel sẽ được gửi "
-            f"tới {requester_email}."
-        )
-        st.info(f"Mã yêu cầu: {request_id}")
-    except Exception as e:
-        st.error(f"Không gửi được yêu cầu phê duyệt: {e}")
-
-
-
-    
-
-    if buffer:
-        st.success("✅ Hoàn thành! Nhấn nút bên dưới để tải file.")
-        st.download_button(
-            label="📥 Tải file Excel",
-            data=buffer,
-            file_name=fname,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-
-        # Gửi email nếu có người nhận
-        if selected_recipients:
-            log(f"\n📧 Đang gửi email tới {len(selected_recipients)} người...")
-            tmp_path = f"/tmp/{fname}"
-            with open(tmp_path, 'wb') as f:
-                f.write(buffer.getvalue())
-            for name, email_addr in selected_recipients:
-                log(f"  → {name} <{email_addr}>")
-                ok = send_email_to(name, email_addr, results_summary, [tmp_path], save_mode_val)
-                log("    ✅ Gửi thành công!" if ok else "    ❌ Gửi thất bại!")
-        else:
-            log("\nℹ️  Không có người nhận → bỏ qua gửi email.")
-    else:
+    if not buffer:
         st.error("Không thể tạo file Excel.")
-
-
-    if not is_vcb_email(requester_email):
-        st.error("Vui lòng nhập email hợp lệ dạng @vietcombank.com.vn để nhận kết quả.")
         st.stop()
 
+    excel_b64  = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    request_id = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{re.sub(r'[^a-z0-9]', '', user_email.lower())[:10]}"
+    log(f"✅ File Excel đã tạo: {fname} ({len(buffer.getvalue())//1024} KB)")
 
-
-def submit_approval_request(payload):
-    headers = {"Content-Type": "application/json"}
-    response = requests.post(
-        APPROVAL_WEBHOOK_URL,
-        headers=headers,
-        data=json.dumps(payload),
-        timeout=60,
+    # 3. Đăng ký request lên Google Apps Script (lưu tạm file + metadata)
+    log("☁️  Đang gửi dữ liệu lên Google Apps Script...")
+    gas_ok = register_request_to_gas(
+        request_id, user_email, keywords,
+        results_summary, excel_b64, fname, save_mode_label
     )
-    response.raise_for_status()
+    if gas_ok:
+        log("✅ Google Apps Script đã nhận và lưu dữ liệu.")
+    else:
+        log("⚠️  GAS không phản hồi — vẫn tiếp tục gửi Telegram.")
 
-    try:
-        body = response.json()
-    except ValueError as exc:
-        raise RuntimeError("Apps Script không trả về JSON hợp lệ") from exc
+    # 4. Gửi Telegram với nút duyệt
+    log("📨 Đang gửi thông báo Telegram...")
+    tg_ok, tg_resp = send_telegram_approval(
+        user_email, keywords, results_summary,
+        excel_b64, fname, save_mode_label, request_id
+    )
+    if tg_ok:
+        log("✅ Đã gửi Telegram thành công!")
+    else:
+        log(f"❌ Telegram lỗi: {tg_resp}")
 
-    if not body.get("ok"):
-        raise RuntimeError(body.get("error", "Apps Script từ chối request"))
-
-    return body
+    # 5. Thông báo cho user
+    st.success(
+        f"✅ Yêu cầu đã được gửi! Bạn sẽ nhận kết quả tại **{user_email}** "
+        f"sau khi được phê duyệt. Mã yêu cầu: `{request_id}`"
+    )
