@@ -34,59 +34,49 @@ def make_session():
     return s
 
 # ====== CẤU HÌNH EMAIL ======
+# ====== CẤU HÌNH PHÊ DUYỆT ======
 try:
-    SENDER_EMAIL    = st.secrets["SENDER_EMAIL"]
-    SENDER_APP_PASS = st.secrets["SENDER_APP_PASS"]
+    APPROVAL_WEBHOOK_URL = st.secrets["APPROVAL_WEBHOOK_URL"]
+    APPROVAL_SHARED_SECRET = st.secrets["APPROVAL_SHARED_SECRET"]
 except KeyError:
-    st.error("⚠️ Chưa cấu hình Secrets! Vào Settings → Secrets để thêm SENDER_EMAIL và SENDER_APP_PASS.")
+    st.error(
+        "⚠️ Chưa cấu hình Secrets! Vào Settings → Secrets để thêm "
+        "APPROVAL_WEBHOOK_URL và APPROVAL_SHARED_SECRET."
+    )
     st.stop()
 
-MODE_SEPARATE   = "separate"
-MODE_MULTISHEET = "multisheet"
-MODE_ONESHEET   = "onesheet"
+VCB_EMAIL_RE = re.compile(
+    r"^[A-Za-z0-9._%+-]+@vietcombank\.com\.vn$",
+    re.IGNORECASE,
+)
 
-EMAIL_RECIPIENTS = [
-    ("beatme", "duylinhvinhphuc@gmail.com"),
-    ("beatme", "duylinh93@gmail.com"),
-    ("Bui Viet Huy", "bvhuy.ho@vietcombank.com.vn"),
-    ("Can Quang Minh", "minhcq.ho@vietcombank.com.vn"),
-    ("Do Thi Vui", "VUIDT.HO@vietcombank.com.vn"),
-    ("Do Thuy Linh", "linhdt1.ho@vietcombank.com.vn"),
-    ("Khieu Van Truong", "TRUONGKV.HO@vietcombank.com.vn"),
-    ("Luong Trung Hieu", "HIEULT1.HO@vietcombank.com.vn"),
-    ("MAI XUAN LICH", "lichmx.ho@vietcombank.com.vn"),
-    ("Nguyen Anh Thu", "nathu.ho@vietcombank.com.vn"),
-    ("Nguyen Duc Huy", "HUYND.HO@vietcombank.com.vn"),
-    ("Nguyen Hoai", "hoain.ho@vietcombank.com.vn"),
-    ("Nguyen Kim Nhung", "NHUNGNK.HO@vietcombank.com.vn"),
-    ("Nguyen Ngoc Chi Linh", "LINHNNC.HO@vietcombank.com.vn"),
-    ("Nguyen Ngoc Khanh", "khanhnn.ho@vietcombank.com.vn"),
-    ("Nguyen The Duy", "duynt.ho@vietcombank.com.vn"),
-    ("Nguyen Thi Ngoc Bich", "ntnbich.ho2@vietcombank.com.vn"),
-    ("Nguyen Thi Ngoc Mai", "MAINTN1.HO@vietcombank.com.vn"),
-    ("NGUYEN THU HUONG", "nthuong.ho2@vietcombank.com.vn"),
-    ("Nguyen Tu Anh", "NTANH1.HO@vietcombank.com.vn"),
-    ("Nguyen Viet Nga", "nganv.ho@vietcombank.com.vn"),
-    ("Nguyen Viet Tung", "TUNGNV1.HO@vietcombank.com.vn"),
-    ("Pham Kim Ngan", "nganpk.ho@vietcombank.com.vn"),
-    ("Pham Thi Thanh Nga", "ngaptt.ho@vietcombank.com.vn"),
-    ("Phan Thi Phuong", "phuongpt1.ho@vietcombank.com.vn"),
-    ("Phan Thuy Linh", "Linhpt.ho@vietcombank.com.vn"),
-    ("Tran Hoang Nga", "ngath.ho1@vietcombank.com.vn"),
-    ("Tran Manh Hung", "HUNGTM4.HO@vietcombank.com.vn"),
-    ("Tran Quang Anh", "ANHTQ.HO@vietcombank.com.vn"),
-    ("Tran Thi Cam Van", "VANTTC.HO@vietcombank.com.vn"),
-    ("Tran Thi Huyen Trang", "trangtth.ho2@vietcombank.com.vn"),
-    ("Tran Thi Mai Huong", "ttmhuong.ho@vietcombank.com.vn"),
-    ("Tran Thi Thanh Hao", "haottt.ho@vietcombank.com.vn"),
-    ("Truong Duc Hai", "haitd.ho@vietcombank.com.vn"),
-    ("Vu Duy Linh", "LINHVD.HO@vietcombank.com.vn"),
-    ("Vu Thi Bich", "BICHVT.HO@vietcombank.com.vn"),
-    ("Vu Thu Nga", "ngavt.ho@vietcombank.com.vn"),
-    ("Vu Viet Anh", "anhvv1.ho@vietcombank.com.vn"),
-]
+# ── Email nhận kết quả ─────────────────────────────────────────────────
+st.markdown("**📧 Email nhận kết quả:**")
+requester_email_input = st.text_input(
+    "Nhập email cơ quan của bạn",
+    placeholder="vd: nguyenvana@vietcombank.com.vn",
+    help="Chỉ chấp nhận địa chỉ email có đuôi @vietcombank.com.vn",
+)
+requester_email = normalize_email(requester_email_input)
+
+if requester_email_input.strip():
+    if is_vcb_email(requester_email):
+        st.caption(f"Kết quả sẽ được gửi tới: {requester_email} sau khi được phê duyệt.")
+    else:
+        st.error("Chỉ chấp nhận email dạng @vietcombank.com.vn.")
+else:
+    st.caption("Nhập email @vietcombank.com.vn để nhận kết quả sau khi được phê duyệt.")
+
 
 # ====== TIỆN ÍCH ======
+
+def normalize_email(email):
+    return email.strip().lower()
+
+def is_vcb_email(email):
+    return bool(VCB_EMAIL_RE.fullmatch(normalize_email(email)))
+    
+
 def remove_accents(s):
     nfkd = unicodedata.normalize('NFKD', s)
     s2   = "".join(c for c in nfkd if not unicodedata.combining(c))
