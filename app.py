@@ -174,17 +174,18 @@ def send_telegram_approval(
     """
     total_records = sum(r['count'] for r in results_summary)
     kw_lines = "\n".join(
-        f"  • \"{r['keyword']}\" → {r['count']} bản ghi"
+        f"  • \"{r['keyword']}\" -> {r['count']} ban ghi"
         for r in results_summary
     )
+    # Dùng plain text để tránh lỗi Markdown parsing khi từ khóa có ký tự đặc biệt
     text = (
-        f"📋 *YÊU CẦU TRA CỨU MSC*\n\n"
-        f"👤 Email: `{user_email}`\n"
-        f"🕐 Thời gian: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
-        f"📊 Chế độ lưu: {save_mode_label}\n"
-        f"📦 Tổng bản ghi: *{total_records}*\n\n"
-        f"Từ khóa:\n{kw_lines}\n\n"
-        f"➡️ Nhấn *✅ Đồng ý* để gửi file kết quả cho user."
+        f"📋 YEU CAU TRA CUU MSC\n\n"
+        f"👤 Email: {user_email}\n"
+        f"🕐 Thoi gian: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
+        f"📊 Che do luu: {save_mode_label}\n"
+        f"📦 Tong ban ghi: {total_records}\n\n"
+        f"Tu khoa:\n{kw_lines}\n\n"
+        f"➡️ Nhan ✅ Dong y de gui file ket qua cho user."
     )
 
     # Inline keyboard
@@ -197,9 +198,8 @@ def send_telegram_approval(
 
     tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     r = requests.post(tg_url, json={
-        "chat_id":    TELEGRAM_CHAT_ID,
-        "text":       text,
-        "parse_mode": "Markdown",
+        "chat_id":      TELEGRAM_CHAT_ID,
+        "text":         text,
         "reply_markup": keyboard,
     }, timeout=15)
     return r.ok, r.json()
