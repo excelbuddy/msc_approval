@@ -3,3 +3,10 @@ pandas
 openpyxl
 streamlit
 urllib3
+datetime
+io
+json
+base64
+unicodedata
+re
+ssl
