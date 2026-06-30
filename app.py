@@ -345,7 +345,14 @@ if st.button("🚀 GỬI YÊU CẦU DỮ LIỆU", type="primary", use_container_
     # 2. Tạo file Excel → base64
     log("💾 Đang tạo file Excel...")
     fname  = f"mscdata_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+
+
     buffer = build_excel_buffer(save_mode_val, all_kw_data)
+    
+    if not buffer:
+        st.error("Không thể tạo file Excel.")
+        st.stop()
+    
     MAX_EXCEL_MB = 15
     excel_size_mb = len(buffer.getvalue()) / 1024 / 1024
     
@@ -355,10 +362,9 @@ if st.button("🚀 GỬI YÊU CẦU DỮ LIỆU", type="primary", use_container_
             f"Vui lòng giảm số trang hoặc số từ khóa. Giới hạn hiện tại: {MAX_EXCEL_MB} MB."
         )
         st.stop()
+
+
     
-    if not buffer:
-        st.error("Không thể tạo file Excel.")
-        st.stop()
 
     excel_b64  = base64.b64encode(buffer.getvalue()).decode('utf-8')
     request_id = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{re.sub(r'[^a-z0-9]', '', user_email.lower())[:10]}"
