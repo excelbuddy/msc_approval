@@ -226,8 +226,8 @@ def register_request_to_gas(
     save_mode_label: str,
 ):
     """
-    Gửi toàn bộ dữ liệu (kể cả file Excel dạng base64) lên Apps Script
-    để lưu tạm, chờ callback từ Telegram Bot.
+    Gửi toàn bộ dữ liệu lên Apps Script.
+    GAS sẽ lưu file Excel vào Google Drive và chỉ lưu metadata nhỏ vào PropertiesService.
     """
     payload = {
         "action":          "register",
@@ -240,8 +240,25 @@ def register_request_to_gas(
         "save_mode":       save_mode_label,
         "submitted_at":    datetime.now().isoformat(),
     }
-    r = requests.post(GAS_WEBHOOK_URL, json=payload, timeout=30)
-    return r.ok
+
+    try:
+        r = requests.post(GAS_WEBHOOK_URL, json=payload, timeout=120)
+        text = r.text[:1000]
+
+        if not r.ok:
+            return False, f"HTTP {r.status_code}: {text}"
+
+        try:
+            data = r.json()
+            if data.get("ok") is False:
+                return False, data.get("error") or data.get("message") or text
+        except Exception:
+            pass
+
+        return True, text
+
+    except Exception as e:
+        return False, str(e)
 
 # ======================================================================
 # GIAO DIỆN STREAMLIT
@@ -329,6 +346,16 @@ if st.button("🚀 GỬI YÊU CẦU DỮ LIỆU", type="primary", use_container_
     log("💾 Đang tạo file Excel...")
     fname  = f"mscdata_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     buffer = build_excel_buffer(save_mode_val, all_kw_data)
+    MAX_EXCEL_MB = 15
+    excel_size_mb = len(buffer.getvalue()) / 1024 / 1024
+    
+    if excel_size_mb > MAX_EXCEL_MB:
+        st.error(
+            f"File Excel quá lớn ({excel_size_mb:.1f} MB). "
+            f"Vui lòng giảm số trang hoặc số từ khóa. Giới hạn hiện tại: {MAX_EXCEL_MB} MB."
+        )
+        st.stop()
+    
     if not buffer:
         st.error("Không thể tạo file Excel.")
         st.stop()
@@ -339,14 +366,23 @@ if st.button("🚀 GỬI YÊU CẦU DỮ LIỆU", type="primary", use_container_
 
     # 3. Đăng ký request lên Google Apps Script (lưu tạm file + metadata)
     log("☁️  Đang gửi dữ liệu lên GAS...")
-    gas_ok = register_request_to_gas(
+
+
+    gas_ok, gas_msg = register_request_to_gas(
         request_id, user_email, keywords,
         results_summary, excel_b64, fname, save_mode_label
     )
+    
     if gas_ok:
         log("✅ GAS đã nhận và lưu dữ liệu.")
     else:
-        log("⚠️  GAS không phản hồi — vẫn tiếp tục gửi Tele tới Admin.")
+        log(f"❌ GAS lỗi: {gas_msg}")
+        st.error("GAS không lưu được request. Vui lòng báo admin kiểm tra Apps Script log.")
+        st.stop()
+
+
+
+    
 
     # 4. Gửi Telegram với nút duyệt
     log("📨 Đang gửi thông báo tới Admin...")
