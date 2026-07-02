@@ -41,6 +41,42 @@ MODE_SEPARATE   = "separate"
 MODE_MULTISHEET = "multisheet"
 MODE_ONESHEET   = "onesheet"
 
+# ====== CẤU HÌNH LĨNH VỰC TRA CỨU ======
+# Mỗi lĩnh vực có bộ matchFields + filters riêng theo đúng API muasamcong.mpi.gov.vn
+FIELD_CONFIGS = {
+    "HANG_HOA": {
+        "label": "📦 Hàng hóa",
+        "matchFields": [
+            "danh_muc_hang_hoa", "ma_hs", "xuat_xu", "ma_tbmt",
+            "ky_ma_hieu", "nhan_hieu", "hang_san_xuat",
+        ],
+        "filters": [
+            {"fieldName": "type", "searchType": "in", "fieldValues": ["HANG_HOA"]},
+            {"fieldName": "tab",  "searchType": "in", "fieldValues": ["HANG_HOA"]},
+        ],
+        "keyword_label":       "Từ khóa hàng hóa (nhiều từ khóa ngăn cách bằng dấu ';')",
+        "keyword_placeholder": "iphone; máy chủ; laptop",
+    },
+    "DICH_VU_PHI_TU_VAN": {
+        "label": "🔧 Dịch vụ phi tư vấn",
+        "matchFields": ["danh_muc_dich_vu", "ma_tbmt"],
+        "filters": [
+            {"fieldName": "type", "searchType": "in", "fieldValues": ["DICH_VU_PHI_TU_VAN"]},
+        ],
+        "keyword_label":       "Từ khóa dịch vụ phi tư vấn (nhiều từ khóa ngăn cách bằng dấu ';')",
+        "keyword_placeholder": "bảo trì; vệ sinh; bảo vệ",
+    },
+    "DICH_VU_TU_VAN": {
+        "label": "📝 Dịch vụ tư vấn",
+        "matchFields": ["mo_ta_dich_vu", "ma_tbmt"],
+        "filters": [
+            {"fieldName": "type", "searchType": "in", "fieldValues": ["DICH_VU_TU_VAN"]},
+        ],
+        "keyword_label":       "Từ khóa dịch vụ tư vấn (nhiều từ khóa ngăn cách bằng dấu ';')",
+        "keyword_placeholder": "báo cáo; thiết kế; giám sát",
+    },
+}
+
 # ====== TIỆN ÍCH ======
 def remove_accents(s):
     nfkd = unicodedata.normalize('NFKD', s)
@@ -97,7 +133,12 @@ def _auto_width(ws):
         ws.column_dimensions[letter].width = min(w + 2, 50)
 
 # ====== FETCH ======
-def fetch_keyword_raw(keyword, total_pages, log_func=None):
+def fetch_keyword_raw(keyword, total_pages, field_config, log_func=None):
+    """
+    field_config: một trong các giá trị của FIELD_CONFIGS, quy định
+    matchFields và filters (type/tab) tương ứng với lĩnh vực tra cứu
+    (Hàng hóa / Dịch vụ phi tư vấn / Dịch vụ tư vấn).
+    """
     url = "https://muasamcong.mpi.gov.vn/o/egp-portal-personal-page/services/smart/search_prc"
     headers = {
         'Accept': 'application/json, text/plain, */*',
@@ -107,12 +148,8 @@ def fetch_keyword_raw(keyword, total_pages, log_func=None):
     cookies = {'GUEST_LANGUAGE_ID': 'vi_VN', 'COOKIE_SUPPORT': 'true'}
     payload = [{"pageSize": 50, "pageNumber": 0, "query": [{
         "index": "es-smart-pricing", "keyWord": keyword, "matchType": "all-1",
-        "matchFields": ["danh_muc_hang_hoa","ma_hs","xuat_xu","ma_tbmt",
-                        "ky_ma_hieu","nhan_hieu","hang_san_xuat"],
-        "filters": [
-            {"fieldName": "type", "searchType": "in", "fieldValues": ["HANG_HOA"]},
-            {"fieldName": "tab",  "searchType": "in", "fieldValues": ["HANG_HOA"]}
-        ]
+        "matchFields": field_config["matchFields"],
+        "filters": field_config["filters"]
     }]}]
 
     def log(m):
@@ -278,10 +315,21 @@ user_email = st.text_input(
     placeholder="điền email hợp lệ"
 )
 
-# ── Từ khóa ────────────────────────────────────────────────────────────
+# ── Lĩnh vực tra cứu ────────────────────────────────────────────────────
+field_label = st.radio(
+    "🔎 Lĩnh vực tra cứu",
+    options=[cfg["label"] for cfg in FIELD_CONFIGS.values()],
+    horizontal=True,
+)
+# Map ngược từ label hiển thị -> key trong FIELD_CONFIGS
+field_key = next(k for k, cfg in FIELD_CONFIGS.items() if cfg["label"] == field_label)
+field_config = FIELD_CONFIGS[field_key]
+
+# ── Từ khóa (nhãn & placeholder thay đổi theo lĩnh vực đã chọn) ─────────
 keyword_input = st.text_input(
-    "Từ khóa hàng hóa (nhiều từ khóa ngăn cách bằng dấu ';')",
-    value="iphone; máy chủ; laptop"
+    field_config["keyword_label"],
+    value=field_config["keyword_placeholder"],
+    key=f"keyword_input_{field_key}",  # key riêng theo lĩnh vực để không giữ giá trị cũ khi đổi lĩnh vực
 )
 
 # ── Số trang ───────────────────────────────────────────────────────────
@@ -327,9 +375,10 @@ if st.button("🚀 GỬI YÊU CẦU DỮ LIỆU", type="primary", use_container_
 
     # 1. Fetch dữ liệu
     results_summary, all_kw_data = [], []
+    log(f"🔎 Lĩnh vực: {field_config['label']}\n")
     for kw in keywords:
         log(f"🔍 Tìm kiếm: \"{kw}\"")
-        data = fetch_keyword_raw(kw, int(total_pages), log)
+        data = fetch_keyword_raw(kw, int(total_pages), field_config, log)
         if data:
             log(f"  ✅ \"{kw}\": {len(data)} bản ghi\n")
             all_kw_data.append((kw, data))
@@ -344,7 +393,7 @@ if st.button("🚀 GỬI YÊU CẦU DỮ LIỆU", type="primary", use_container_
 
     # 2. Tạo file Excel → base64
     log("💾 Đang tạo file Excel...")
-    fname  = f"mscdata_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    fname  = f"mscdata_{field_key.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
 
 
     buffer = build_excel_buffer(save_mode_val, all_kw_data)
