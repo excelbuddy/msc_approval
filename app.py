@@ -10,7 +10,7 @@ import unicodedata
 import re
 import ssl
 from requests.adapters import HTTPAdapter
-from openpyxl.utils.exceptions import ILLEGAL_CHARACTERS_RE 
+
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
