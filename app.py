@@ -181,7 +181,7 @@ def fetch_keyword_raw(keyword, total_pages, field_config, log_func=None):
 
 # ====== BUILD EXCEL BUFFER ======
 #20260925 do lỗi chứa ký tự đặc biệt của excel
-from openpyxl.utils.exceptions import ILLEGAL_CHARACTERS_RE
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 
 def _sanitize_for_excel(df):
     """Loại bỏ ký tự điều khiển không hợp lệ với Excel trong các cột dạng text."""
