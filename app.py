@@ -182,10 +182,22 @@ def fetch_keyword_raw(keyword, total_pages, field_config, log_func=None):
 # ====== BUILD EXCEL BUFFER ======
 #20260925 do lỗi chứa ký tự đặc biệt của excel
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+ILLEGAL_CHARACTERS_RE = re.compile(r'[\000-\010]|[\013-\014]|[\016-\037]')
 
 def _sanitize_for_excel(df):
-    """Loại bỏ ký tự điều khiển không hợp lệ với Excel trong các cột dạng text."""
-    return df.map(lambda v: ILLEGAL_CHARACTERS_RE.sub('', v) if isinstance(v, str) else v)
+    #"""Loại bỏ ký tự điều khiển không hợp lệ với Excel trong các cột dạng text."""
+    #return df.map(lambda v: ILLEGAL_CHARACTERS_RE.sub('', v) if isinstance(v, str) else v) không dùng do đây là xóa bỏ luôn ký tự không hợp lệ
+
+    """Thay ký tự điều khiển không hợp lệ với Excel bằng dạng hex [0xNN], không xóa mất thông tin gốc."""
+    def escape_char(m):
+        return f"[0x{ord(m.group()):02X}]"
+
+    def clean(v):
+        if isinstance(v, str):
+            return ILLEGAL_CHARACTERS_RE.sub(escape_char, v)
+        return v
+
+    return df.map(clean)
 
 
 def build_excel_buffer(save_mode_val, all_kw_data):
