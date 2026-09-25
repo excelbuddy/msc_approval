@@ -10,6 +10,7 @@ import unicodedata
 import re
 import ssl
 from requests.adapters import HTTPAdapter
+from openpyxl.utils.exceptions import ILLEGAL_CHARACTERS_RE 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -179,12 +180,21 @@ def fetch_keyword_raw(keyword, total_pages, field_config, log_func=None):
     return all_data
 
 # ====== BUILD EXCEL BUFFER ======
+#20260925 do lỗi chứa ký tự đặc biệt của excel
+from openpyxl.utils.exceptions import ILLEGAL_CHARACTERS_RE
+
+def _sanitize_for_excel(df):
+    """Loại bỏ ký tự điều khiển không hợp lệ với Excel trong các cột dạng text."""
+    return df.map(lambda v: ILLEGAL_CHARACTERS_RE.sub('', v) if isinstance(v, str) else v)
+
+
 def build_excel_buffer(save_mode_val, all_kw_data):
     buffer = io.BytesIO()
     if save_mode_val == MODE_ONESHEET:
         frames = [_clean_df(data, kw) for kw, data in all_kw_data if data]
         if not frames: return None
         df = pd.concat(frames, ignore_index=True)
+        df = _sanitize_for_excel(df)
         with pd.ExcelWriter(buffer, engine='openpyxl') as w:
             df.to_excel(w, sheet_name='msc_data', index=False)
             _auto_width(w.sheets['msc_data'])
@@ -194,6 +204,7 @@ def build_excel_buffer(save_mode_val, all_kw_data):
             for kw, data in all_kw_data:
                 if not data: continue
                 df = _clean_df(data)
+                df = _sanitize_for_excel(df)
                 sn = base = remove_accents(kw)[:28] or "sheet"
                 i = 2
                 while sn in w.sheets: sn = f"{base[:25]}_{i}"; i += 1
@@ -202,6 +213,11 @@ def build_excel_buffer(save_mode_val, all_kw_data):
 
     buffer.seek(0)
     return buffer
+
+
+
+
+
 
 # ====== GỬI TELEGRAM (thông báo + nút duyệt) ======
 def send_telegram_approval(
