@@ -38,12 +38,21 @@ except KeyError as e:
     st.error(f"⚠️ Thiếu secret: {e}. Vào Settings → Secrets để bổ sung.")
     st.stop()
 
+# ====== MUA SẮM CÔNG (đã đổi từ .mpi.gov.vn sang .mof.gov.vn) ======
+MSC_BASE_URL   = "https://muasamcong.mof.gov.vn"
+MSC_REFERER    = (MSC_BASE_URL + "/web/guest/profile-info?p_p_id=egpportalpersonalpage_WAR_egpportalpersonalpage"
+                  "&p_p_lifecycle=0&p_p_state=normal&p_p_mode=view"
+                  "&_egpportalpersonalpage_WAR_egpportalpersonalpage_render=personalUrl&menu=bid-pricing")
+MSC_USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36")
+PAGE_SIZE      = 20   # site hiện gửi pageSize=20 (trước đây 50)
+
 MODE_SEPARATE   = "separate"
 MODE_MULTISHEET = "multisheet"
 MODE_ONESHEET   = "onesheet"
 
 # ====== CẤU HÌNH LĨNH VỰC TRA CỨU ======
-# Mỗi lĩnh vực có bộ matchFields + filters riêng theo đúng API muasamcong.mpi.gov.vn
+# Mỗi lĩnh vực có bộ matchFields + filters riêng theo đúng API muasamcong.mof.gov.vn
 FIELD_CONFIGS = {
     "HANG_HOA": {
         "label": "📦 Hàng hóa",
@@ -140,15 +149,20 @@ def fetch_keyword_raw(keyword, total_pages, field_config, log_func=None):
     matchFields và filters (type/tab) tương ứng với lĩnh vực tra cứu
     (Hàng hóa / Dịch vụ phi tư vấn / Dịch vụ tư vấn).
     """
-    url = "https://muasamcong.mpi.gov.vn/o/egp-portal-personal-page/services/smart/search_prc"
+    url = f"{MSC_BASE_URL}/o/egp-portal-personal-page/services/smart/search_prc"
     headers = {
         'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9,vi-VN;q=0.8,vi;q=0.7',
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
+        'Origin': MSC_BASE_URL,
+        'Referer': MSC_REFERER,
+        'User-Agent': MSC_USER_AGENT,
     }
     cookies = {'GUEST_LANGUAGE_ID': 'vi_VN', 'COOKIE_SUPPORT': 'true'}
-    payload = [{"pageSize": 50, "pageNumber": 0, "query": [{
-        "index": "es-smart-pricing", "keyWord": keyword, "matchType": "all-1",
+    payload = [{"pageSize": PAGE_SIZE, "pageNumber": 0, "query": [{
+        "index": "es-smart-pricing", "keyWord": keyword,
+        "keyWordNotMatch": "",   # trường mới trong request của site mof.gov.vn
+        "matchType": "all-1",
         "matchFields": field_config["matchFields"],
         "filters": field_config["filters"]
     }]}]
@@ -170,7 +184,7 @@ def fetch_keyword_raw(keyword, total_pages, field_config, log_func=None):
                     log(f"  ⚠️  [{keyword}] Không có dữ liệu trang {page+1} → Dừng quét")
                     break
                 all_data.extend(d)
-                if len(d) < 50:
+                if len(d) < PAGE_SIZE:
                     log(f"  ✅ [{keyword}] Đã tới trang cuối ({len(d)} bản ghi)")
                     break
             else:
@@ -362,7 +376,7 @@ keyword_input = st.text_input(
 
 # ── Số trang ───────────────────────────────────────────────────────────
 total_pages = st.number_input(
-    "Số trang / từ khóa (50 bản ghi/trang)",
+    "Số trang / từ khóa (20 bản ghi/trang)",
     min_value=1, max_value=500, value=100
 )
 
